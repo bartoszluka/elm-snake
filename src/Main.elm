@@ -2,8 +2,12 @@ module Main exposing (Model, Msg(..), init, main, subscriptions, update, view)
 
 import Browser
 import Element exposing (..)
+import Element.Background as Background
+import Element.Border
 import Element.Font as Font
+import Hex
 import Html
+import String exposing (String)
 import Svg exposing (svg)
 import Svg.Attributes as Svga
 import Task
@@ -14,6 +18,7 @@ import Time
 -- MAIN
 
 
+main : Program () Model Msg
 main =
     Browser.element
         { init = init
@@ -28,15 +33,14 @@ main =
 
 
 type alias Model =
-    { zone : Time.Zone
-    , time : Time.Posix
+    { snake : Snake
     }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model Time.utc (Time.millisToPosix 0)
-    , Task.perform AdjustTimeZone Time.here
+    ( Model (Snake 1 1)
+    , Cmd.none
     )
 
 
@@ -46,19 +50,25 @@ init _ =
 
 type Msg
     = Tick Time.Posix
-    | AdjustTimeZone Time.Zone
+
+
+increment : Snake -> Snake
+increment snake =
+    if snake.x + 1 <= 10 then
+        { snake | x = snake.x + 1 }
+
+    else if snake.y + 1 <= 10 then
+        { snake | x = 1, y = snake.y + 1 }
+
+    else
+        { snake | x = 1, y = 1 }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        Tick newTime ->
-            ( { model | time = newTime }
-            , Cmd.none
-            )
-
-        AdjustTimeZone newZone ->
-            ( { model | zone = newZone }
+        Tick _ ->
+            ( { model | snake = increment model.snake }
             , Cmd.none
             )
 
@@ -69,7 +79,7 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Time.every 1000 Tick
+    Time.every 200 Tick
 
 
 
@@ -78,48 +88,46 @@ subscriptions model =
 
 viewLayout : Model -> Html.Html Msg
 viewLayout model =
-    layout [] (view model)
+    layout [ Background.color (Hex.toColor "#2E3440") ] (view model)
 
 
 view : Model -> Element Msg
 view model =
-    let
-        hour =
-            String.fromInt (Time.toHour model.zone model.time)
-
-        minute =
-            String.fromInt (Time.toMinute model.zone model.time)
-
-        second =
-            String.fromInt (Time.toSecond model.zone model.time)
-    in
     column []
-        [ clock
-        , el [ Font.size 30 ] (text (hour ++ ":" ++ minute ++ ":" ++ second))
+        [ board model.snake -- #8FBCBB
         ]
 
 
-clock : Element Msg
-clock =
-    Element.html <|
-        Svg.svg
-            [ Svga.width "120"
-            , Svga.height "120"
-            , Svga.viewBox "0 0 120 120"
-            ]
-            [ Svg.circle
-                [ Svga.cx "50"
-                , Svga.cy "50"
-                , Svga.r "50"
-                , Svga.fill "#0000FF"
-                ]
-                []
-            , Svg.line
-                [ Svga.x1 "0"
-                , Svga.y1 "80"
-                , Svga.x2 "100"
-                , Svga.y2 "20"
-                , Svga.stroke "red"
-                ]
-                []
-            ]
+type alias Snake =
+    { x : Int
+    , y : Int
+    }
+
+
+board : Snake -> Element Msg
+board snake =
+    column [ spacing 10 ]
+        (List.map
+            (\y ->
+                row [ spacing 10 ]
+                    (List.map (\x -> tile x y snake) (List.range 1 10))
+            )
+            (List.range 1 10)
+        )
+
+
+tile : Int -> Int -> Snake -> Element Msg
+tile x y snake =
+    el
+        [ Background.color
+            (if snake.x == x && snake.y == y then
+                Hex.toColor "#5E81AC"
+
+             else
+                Hex.toColor "#A3BE8C"
+            )
+        , width (px 50)
+        , height (px 50)
+        , Element.Border.rounded 5
+        ]
+        none
