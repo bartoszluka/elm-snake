@@ -262,8 +262,7 @@ view model =
     column [ centerX, centerY ]
         [ board model.size model.snake -- #8FBCBB
         , playButton model.gameState
-        , arrows model.snake.direction
-        , currentSnake model.snake.body
+        , arrows
         ]
 
 
@@ -271,7 +270,7 @@ playButton : GameState -> Element Msg
 playButton game =
     let
         templateButton str state =
-            button []
+            button [ Font.size 30, Font.color white ]
                 { label = text str
                 , onPress = Just state
                 }
@@ -303,8 +302,8 @@ white =
     Hex.toColor "#ECEFF4"
 
 
-arrows : Direction -> Element Msg
-arrows direction =
+arrows : Element Msg
+arrows =
     let
         templateButton str msg =
             button []
