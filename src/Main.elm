@@ -32,12 +32,13 @@ main =
 type alias Model =
     { snake : Snake
     , playing : Bool
+    , size : Size
     }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model startingSnake True
+    ( Model startingSnake True (Size 1 10)
     , Cmd.none
     )
 
@@ -50,6 +51,14 @@ type Msg
     = Tick Time.Posix
     | SetPlaying Bool
     | ChangeDirection Direction
+
+
+validateSnake : Size -> Snake -> Bool
+validateSnake size snake =
+    (snake.head.x <= size.max)
+        && (snake.head.x >= size.min)
+        && (snake.head.y <= size.max)
+        && (snake.head.y >= size.min)
 
 
 moveSnake : Snake -> Snake
@@ -79,8 +88,12 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         Tick _ ->
-            if model.playing then
-                ( { model | snake = moveSnake model.snake }
+            let
+                newSnake =
+                    moveSnake model.snake
+            in
+            if model.playing && validateSnake model.size newSnake then
+                ( { model | snake = newSnake }
                 , Cmd.none
                 )
 
@@ -123,7 +136,7 @@ viewLayout model =
 view : Model -> Element Msg
 view model =
     column [ centerX, centerY ]
-        [ board model.snake -- #8FBCBB
+        [ board model.size model.snake -- #8FBCBB
         , button [ Font.color white ]
             { label =
                 text <|
@@ -212,15 +225,28 @@ type alias Point =
     }
 
 
-board : Snake -> Element Msg
-board snake =
-    column [ spacing 10 ]
+type alias Size =
+    { min : Int
+    , max : Int
+    }
+
+
+board : Size -> Snake -> Element Msg
+board size snake =
+    let
+        sizeRange =
+            List.range size.min size.max
+
+        spc =
+            spacing 10
+    in
+    column [ spc ]
         (List.map
             (\y ->
-                row [ spacing 10 ]
-                    (List.map (\x -> tile x y snake) (List.range 1 10))
+                row [ spc ]
+                    (List.map (\x -> tile x y snake) sizeRange)
             )
-            (List.range 1 10)
+            sizeRange
         )
 
 
