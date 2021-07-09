@@ -5,6 +5,7 @@ import Element exposing (..)
 import Element.Background as Background
 import Element.Border
 import Element.Font as Font
+import Element.Input exposing (button)
 import Hex
 import Html
 import String exposing (String)
@@ -34,12 +35,13 @@ main =
 
 type alias Model =
     { snake : Snake
+    , playing : Bool
     }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model (Snake 1 1)
+    ( Model (Snake 1 1) True
     , Cmd.none
     )
 
@@ -50,6 +52,7 @@ init _ =
 
 type Msg
     = Tick Time.Posix
+    | SetPlaying Bool
 
 
 increment : Snake -> Snake
@@ -68,7 +71,16 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         Tick _ ->
-            ( { model | snake = increment model.snake }
+            if model.playing then
+                ( { model | snake = increment model.snake }
+                , Cmd.none
+                )
+
+            else
+                ( model, Cmd.none )
+
+        SetPlaying bool ->
+            ( { model | playing = bool }
             , Cmd.none
             )
 
@@ -95,6 +107,16 @@ view : Model -> Element Msg
 view model =
     column []
         [ board model.snake -- #8FBCBB
+        , button [ Font.color (Hex.toColor "#ECEFF4") ]
+            { label =
+                text <|
+                    if model.playing then
+                        "stop"
+
+                    else
+                        "start"
+            , onPress = Just (SetPlaying (not model.playing))
+            }
         ]
 
 
