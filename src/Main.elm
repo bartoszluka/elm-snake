@@ -1,4 +1,4 @@
-module Main exposing (Direction(..), GameState(..), Model, Msg(..), Point, Size, Snake, arrows, board, currentSnake, init, initialModel, initialSnake, main, moveSnake, playButton, subscriptions, tile, update, validateSnake, view, viewLayout, white)
+module Main exposing (Direction(..), GameState(..), Model, Msg(..), Point, Size, Snake, arrows, board, currentSnake, init, initialModel, initialSnake, main, moveSnake, playButton, subscriptions, update, validateSnake, view, viewLayout, viewTile, white)
 
 import Browser
 import Element exposing (..)
@@ -8,6 +8,8 @@ import Element.Font as Font
 import Element.Input exposing (button)
 import Hex
 import Html
+import Random
+import Random.Extra
 import Time
 
 
@@ -33,12 +35,13 @@ type alias Model =
     { snake : Snake
     , gameState : GameState
     , size : Size
+    , food : Point
     }
 
 
 initialModel : Model
 initialModel =
-    Model initialSnake Playing (Size 1 10)
+    Model initialSnake Playing (Size 1 10) (Point 3 3)
 
 
 type GameState
@@ -99,6 +102,7 @@ type Msg
     | SetGameState GameState
     | ChangeDirection Direction
     | StartOver
+    | NewFood Point
 
 
 validateSnake : Size -> Snake -> Bool
@@ -122,17 +126,23 @@ didEatHimself snake =
 
 isSnakeInBounds : Size -> Snake -> Bool
 isSnakeInBounds size snake =
-    (snake.head.x <= size.max)
+    -- just to get it formatted correctly
+    True
+        && (snake.head.x <= size.max)
         && (snake.head.x >= size.min)
         && (snake.head.y <= size.max)
         && (snake.head.y >= size.min)
 
 
-moveSnake : Snake -> Snake
-moveSnake { body, direction, head } =
+moveSnake : Snake -> Bool -> Snake
+moveSnake { body, direction, head } ateFood =
     let
         tail =
-            body |> List.tail |> Maybe.withDefault initialSnake.body
+            if ateFood then
+                body
+
+            else
+                body |> List.tail |> Maybe.withDefault initialSnake.body
 
         updateBody newHead =
             Snake (tail ++ [ newHead ]) newHead direction
@@ -151,13 +161,30 @@ moveSnake { body, direction, head } =
             Point head.x (head.y + 1) |> updateBody
 
 
+generatePoint : Model -> Random.Generator Point
+generatePoint model =
+    let
+        generateInt : Size -> Random.Generator Int
+        generateInt { min, max } =
+            Random.int min max
+
+        generateGenericPoint : Size -> Random.Generator Point
+        generateGenericPoint size =
+            Random.map2 Point (generateInt size) (generateInt size)
+    in
+    Random.Extra.filter (\p -> not <| List.member p model.snake.body) (generateGenericPoint model.size)
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         Tick _ ->
             let
+                ateFood =
+                    List.member model.food model.snake.body
+
                 newSnake =
-                    moveSnake model.snake
+                    moveSnake model.snake ateFood
 
                 isValid =
                     validateSnake model.size newSnake
@@ -166,7 +193,11 @@ update msg model =
                 Playing ->
                     if isValid then
                         ( { model | snake = newSnake }
-                        , Cmd.none
+                        , if ateFood then
+                            Random.generate NewFood (generatePoint model)
+
+                          else
+                            Cmd.none
                         )
 
                     else
@@ -174,10 +205,7 @@ update msg model =
                         , Cmd.none
                         )
 
-                Paused ->
-                    ( model, Cmd.none )
-
-                Lost ->
+                _ ->
                     ( model, Cmd.none )
 
         SetGameState gameState ->
@@ -196,6 +224,11 @@ update msg model =
 
         StartOver ->
             ( initialModel, Cmd.none )
+
+        NewFood point ->
+            ( { model | food = point }
+            , Cmd.none
+            )
 
 
 type Side
@@ -260,7 +293,7 @@ viewLayout model =
 view : Model -> Element Msg
 view model =
     column [ centerX, centerY ]
-        [ board model.size model.snake -- #8FBCBB
+        [ board model
         , playButton model.gameState
         , arrows
         ]
@@ -324,41 +357,53 @@ arrows =
         ]
 
 
-board : Size -> Snake -> Element Msg
-board size snake =
+board : Model -> Element Msg
+board model =
     let
         sizeRange =
-            List.range size.min size.max
+            List.range model.size.min model.size.max
 
         spc =
             spacing 10
+
+        tileType x y =
+            if List.member (Point x y) model.snake.body then
+                SnakePart
+
+            else if Point x y == model.food then
+                Food
+
+            else
+                Board
     in
     column [ spc ]
         (List.map
             (\y ->
                 row [ spc ]
-                    (List.map (\x -> tile x y snake) sizeRange)
+                    (List.map (\x -> viewTile (tileType x y)) sizeRange)
             )
             sizeRange
         )
 
 
-tile : Int -> Int -> Snake -> Element Msg
-tile x y snake =
-    let
-        inside =
-            List.member (Point x y) snake.body
-    in
-    el
-        [ Background.color
-            (if inside then
-                Hex.toColor "#5E81AC"
+type TileType
+    = SnakePart
+    | Board
+    | Food
 
-             else
-                Hex.toColor "#A3BE8C"
-            )
-        , width (px 50)
-        , height (px 50)
-        , Element.Border.rounded 5
-        ]
-        none
+
+viewTile : TileType -> Element Msg
+viewTile tile =
+    let
+        template str =
+            el [ Background.color (Hex.toColor str), width (px 50), height (px 50), Element.Border.rounded 5 ] none
+    in
+    case tile of
+        SnakePart ->
+            template "#5E81AC"
+
+        Board ->
+            template "#A3BE8C"
+
+        Food ->
+            template "#BF616A"
