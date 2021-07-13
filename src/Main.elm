@@ -6,10 +6,9 @@ import Element exposing (..)
 import Element.Background as Background
 import Element.Border
 import Element.Font as Font
-import Element.Input as Input exposing (button, focusedOnLoad)
+import Element.Input exposing (button)
 import Hex
 import Html
-import Html.Events exposing (keyCode)
 import Json.Decode as Decode
 import Random
 import Random.Extra
@@ -252,15 +251,7 @@ update msg model =
         KeyPressed key ->
             ( { model | pressedKey = key }
             , Cmd.none
-              -- , Cmd.map (mapKeyToDirection key) ChangeDirection
             )
-
-
-mapKeyToDirection : a -> msg
-mapKeyToDirection key =
-    case key of
-        _ ->
-            Debug.todo "branch '_' not implemented"
 
 
 type Side
