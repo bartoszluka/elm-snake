@@ -1,13 +1,16 @@
-module Main exposing (Direction(..), GameState(..), Model, Msg(..), Point, Size, Snake, arrows, board, currentSnake, init, initialModel, initialSnake, main, moveSnake, playButton, subscriptions, update, validateSnake, view, viewLayout, viewTile, white)
+module Main exposing (Direction(..), GameState(..), Model, Msg(..), Point, Size, Snake, arrows, board, currentSnake, init, initialModel, initialSnake, main, moveSnake, playButton, subscriptions, update, validateSnake, view, viewLayout, viewTile)
 
 import Browser
+import Browser.Events
 import Element exposing (..)
 import Element.Background as Background
 import Element.Border
 import Element.Font as Font
-import Element.Input exposing (button)
+import Element.Input as Input exposing (button, focusedOnLoad)
 import Hex
 import Html
+import Html.Events exposing (keyCode)
+import Json.Decode as Decode
 import Random
 import Random.Extra
 import Time
@@ -36,12 +39,14 @@ type alias Model =
     , gameState : GameState
     , size : Size
     , food : Point
+    , score : Int
+    , pressedKey : String
     }
 
 
 initialModel : Model
 initialModel =
-    Model initialSnake Playing (Size 1 10) (Point 3 3)
+    Model initialSnake Playing (Size 1 10) (Point 3 3) 0 "keys here"
 
 
 type GameState
@@ -72,6 +77,7 @@ type Direction
     | Right
     | Up
     | Down
+    | NoOp
 
 
 type alias Point =
@@ -103,6 +109,7 @@ type Msg
     | ChangeDirection Direction
     | StartOver
     | NewFood Point
+    | KeyPressed String
 
 
 validateSnake : Size -> Snake -> Bool
@@ -160,6 +167,9 @@ moveSnake { body, direction, head } ateFood =
         Down ->
             Point head.x (head.y + 1) |> updateBody
 
+        NoOp ->
+            Snake body head direction
+
 
 generatePoint : Model -> Random.Generator Point
 generatePoint model =
@@ -192,13 +202,15 @@ update msg model =
             case model.gameState of
                 Playing ->
                     if isValid then
-                        ( { model | snake = newSnake }
-                        , if ateFood then
-                            Random.generate NewFood (generatePoint model)
+                        if ateFood then
+                            ( { model | snake = newSnake, score = model.score + 1 }
+                            , Random.generate NewFood (generatePoint model)
+                            )
 
-                          else
-                            Cmd.none
-                        )
+                        else
+                            ( { model | snake = newSnake }
+                            , Cmd.none
+                            )
 
                     else
                         ( { model | gameState = Lost }
@@ -213,14 +225,21 @@ update msg model =
             , Cmd.none
             )
 
-        ChangeDirection newDirection ->
-            let
-                newSnake snake =
-                    { snake | direction = calcNextDirection snake.direction newDirection }
-            in
-            ( { model | snake = newSnake model.snake }
-            , Cmd.none
-            )
+        ChangeDirection direction ->
+            if model.gameState == Playing then
+                let
+                    newDirection =
+                        calcNextDirection model.snake.direction direction
+
+                    newSnake snake =
+                        { snake | direction = newDirection }
+                in
+                ( { model | snake = newSnake model.snake }
+                , Cmd.none
+                )
+
+            else
+                ( model, Cmd.none )
 
         StartOver ->
             ( initialModel, Cmd.none )
@@ -230,10 +249,24 @@ update msg model =
             , Cmd.none
             )
 
+        KeyPressed key ->
+            ( { model | pressedKey = key }
+            , Cmd.none
+              -- , Cmd.map (mapKeyToDirection key) ChangeDirection
+            )
+
+
+mapKeyToDirection : a -> msg
+mapKeyToDirection key =
+    case key of
+        _ ->
+            Debug.todo "branch '_' not implemented"
+
 
 type Side
     = Horizontal
     | Vertical
+    | NoSide
 
 
 mapDirectionToSide : Direction -> Side
@@ -250,6 +283,9 @@ mapDirectionToSide dir =
 
         Down ->
             Vertical
+
+        _ ->
+            NoSide
 
 
 calcNextDirection : Direction -> Direction -> Direction
@@ -278,32 +314,89 @@ calcNextDirection prev next =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Time.every 400 Tick
+    Sub.batch
+        [ Time.every 300 Tick
+        , Browser.Events.onKeyDown keyDecoder
+        , Browser.Events.onKeyDown keyDecoderToString
+        ]
+
+
+keyDecoderToString : Decode.Decoder Msg
+keyDecoderToString =
+    Decode.map KeyPressed (Decode.field "key" Decode.string)
+
+
+keyDecoder : Decode.Decoder Msg
+keyDecoder =
+    Decode.map toMessage (Decode.field "key" Decode.string)
+
+
+toMessage : String -> Msg
+toMessage string =
+    string |> toDirection |> ChangeDirection
 
 
 
 -- VIEW
 
 
-viewLayout : Model -> Html.Html Msg
-viewLayout model =
-    layout [ Background.color (Hex.toColor "#2E3440") ] (view model)
-
-
 view : Model -> Element Msg
 view model =
     column [ centerX, centerY ]
-        [ board model
-        , playButton model.gameState
+        [ playButton model.gameState
+        , viewScore model.score
+        , board model
         , arrows
+        , el [] (text model.pressedKey)
         ]
+
+
+viewScore : Int -> Element Msg
+viewScore score =
+    el [ Font.size 70, centerX ] (text <| String.fromInt score)
+
+
+toDirection : String -> Direction
+toDirection string =
+    case string of
+        "h" ->
+            Left
+
+        "ArrowLeft" ->
+            Left
+
+        "l" ->
+            Right
+
+        "ArrowRight" ->
+            Right
+
+        "k" ->
+            Up
+
+        "ArrowUp" ->
+            Up
+
+        "j" ->
+            Down
+
+        "ArrowDown" ->
+            Down
+
+        _ ->
+            NoOp
+
+
+viewLayout : Model -> Html.Html Msg
+viewLayout model =
+    layout [ Background.color (Hex.toColor "#2E3440"), Font.color white ] (view model)
 
 
 playButton : GameState -> Element Msg
 playButton game =
     let
         templateButton str state =
-            button [ Font.size 30, Font.color white ]
+            button [ Font.size 30 ]
                 { label = text str
                 , onPress = Just state
                 }
@@ -321,7 +414,7 @@ playButton game =
 
 currentSnake : List Point -> Element Msg
 currentSnake list =
-    row [ Font.color white, spaceEvenly, width fill ] <|
+    row [ spaceEvenly, width fill ] <|
         List.map
             (\point ->
                 text
@@ -346,7 +439,6 @@ arrows =
     in
     row
         [ Font.size 50
-        , Font.color white
         , spaceEvenly
         , width fill
         ]
