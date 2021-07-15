@@ -12,6 +12,7 @@ import Html
 import Json.Decode as Decode
 import Random
 import Random.Extra
+import Svg.Attributes exposing (direction)
 import Time
 
 
@@ -45,7 +46,7 @@ type alias Model =
 
 initialModel : Model
 initialModel =
-    Model initialSnake Playing (Size 1 10) (Point 3 3) 0 "keys here"
+    Model initialSnake Playing (Size 1 15) (Point 3 3) 0 "keys here"
 
 
 type GameState
@@ -57,7 +58,8 @@ type GameState
 type alias Snake =
     { body : List Point
     , head : Point
-    , direction : Direction
+    , currentDirection : Direction
+    , nextDirection : Direction
     }
 
 
@@ -69,6 +71,7 @@ initialSnake =
         )
         (Point 3 1)
         Right
+        Right
 
 
 type Direction
@@ -76,7 +79,6 @@ type Direction
     | Right
     | Up
     | Down
-    | NoOp
 
 
 type alias Point =
@@ -109,6 +111,7 @@ type Msg
     | StartOver
     | NewFood Point
     | KeyPressed String
+    | UnknownKeyPressed
 
 
 validateSnake : Size -> Snake -> Bool
@@ -141,7 +144,7 @@ isSnakeInBounds size snake =
 
 
 moveSnake : Snake -> Bool -> Snake
-moveSnake { body, direction, head } ateFood =
+moveSnake { body, head, nextDirection } ateFood =
     let
         tail =
             if ateFood then
@@ -151,9 +154,9 @@ moveSnake { body, direction, head } ateFood =
                 body |> List.tail |> Maybe.withDefault initialSnake.body
 
         updateBody newHead =
-            Snake (tail ++ [ newHead ]) newHead direction
+            Snake (tail ++ [ newHead ]) newHead nextDirection nextDirection
     in
-    case direction of
+    case nextDirection of
         Right ->
             Point (head.x + 1) head.y |> updateBody
 
@@ -165,9 +168,6 @@ moveSnake { body, direction, head } ateFood =
 
         Down ->
             Point head.x (head.y + 1) |> updateBody
-
-        NoOp ->
-            Snake body head direction
 
 
 generatePoint : Model -> Random.Generator Point
@@ -189,11 +189,11 @@ update msg model =
     case msg of
         Tick _ ->
             let
-                ateFood =
-                    List.member model.food model.snake.body
-
                 newSnake =
-                    moveSnake model.snake ateFood
+                    moveSnake model.snake False
+
+                ateFood =
+                    List.member model.food newSnake.body
 
                 isValid =
                     validateSnake model.size newSnake
@@ -202,7 +202,7 @@ update msg model =
                 Playing ->
                     if isValid then
                         if ateFood then
-                            ( { model | snake = newSnake, score = model.score + 1 }
+                            ( { model | snake = moveSnake model.snake True, score = model.score + 1 }
                             , Random.generate NewFood (generatePoint model)
                             )
 
@@ -228,10 +228,10 @@ update msg model =
             if model.gameState == Playing then
                 let
                     newDirection =
-                        calcNextDirection model.snake.direction direction
+                        calcNextDirection model.snake.currentDirection direction
 
                     newSnake snake =
-                        { snake | direction = newDirection }
+                        { snake | nextDirection = newDirection }
                 in
                 ( { model | snake = newSnake model.snake }
                 , Cmd.none
@@ -253,11 +253,13 @@ update msg model =
             , Cmd.none
             )
 
+        UnknownKeyPressed ->
+            ( model, Cmd.none )
+
 
 type Side
     = Horizontal
     | Vertical
-    | NoSide
 
 
 mapDirectionToSide : Direction -> Side
@@ -274,9 +276,6 @@ mapDirectionToSide dir =
 
         Down ->
             Vertical
-
-        _ ->
-            NoSide
 
 
 calcNextDirection : Direction -> Direction -> Direction
@@ -304,12 +303,30 @@ calcNextDirection prev next =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
+subscriptions model =
     Sub.batch
-        [ Time.every 300 Tick
+        [ Time.every (speedUp model.score) Tick
         , Browser.Events.onKeyDown keyDecoder
         , Browser.Events.onKeyDown keyDecoderToString
         ]
+
+
+speedUp : Int -> Float
+speedUp score =
+    let
+        x =
+            toFloat score
+
+        rate =
+            1.1
+
+        initialSpeed =
+            300
+
+        finalSpeed =
+            150
+    in
+    (rate ^ -x) * (initialSpeed - finalSpeed) + finalSpeed
 
 
 keyDecoderToString : Decode.Decoder Msg
@@ -324,7 +341,7 @@ keyDecoder =
 
 toMessage : String -> Msg
 toMessage string =
-    string |> toDirection |> ChangeDirection
+    string |> foobar
 
 
 
@@ -347,35 +364,74 @@ viewScore score =
     el [ Font.size 70, centerX ] (text <| String.fromInt score)
 
 
-toDirection : String -> Direction
-toDirection string =
-    case string of
+type DirectionMap
+    = Match Direction
+    | NoMatch String
+
+
+coolMap : List String -> Direction -> DirectionMap -> DirectionMap
+coolMap bindings direction dirmap =
+    case dirmap of
+        Match d ->
+            Match d
+
+        NoMatch key ->
+            if List.member key bindings then
+                Match direction
+
+            else
+                NoMatch key
+
+
+unWrap : DirectionMap -> Msg
+unWrap dirmap =
+    case dirmap of
+        Match direction ->
+            ChangeDirection direction
+
+        NoMatch _ ->
+            UnknownKeyPressed
+
+
+foobar : String -> Msg
+foobar key =
+    NoMatch key
+        |> coolMap [ "h", "ArrowLeft", "a" ] Left
+        |> coolMap [ "l", "ArrowRight", "d" ] Right
+        |> coolMap [ "k", "ArrowUp", "w" ] Up
+        |> coolMap [ "j", "ArrowDown", "s" ] Down
+        |> unWrap
+
+
+keyToMsg : String -> Msg
+keyToMsg key =
+    case key of
         "h" ->
-            Left
+            ChangeDirection Left
 
         "ArrowLeft" ->
-            Left
+            ChangeDirection Left
 
         "l" ->
-            Right
+            ChangeDirection Right
 
         "ArrowRight" ->
-            Right
+            ChangeDirection Right
 
         "k" ->
-            Up
+            ChangeDirection Up
 
         "ArrowUp" ->
-            Up
+            ChangeDirection Up
 
         "j" ->
-            Down
+            ChangeDirection Down
 
         "ArrowDown" ->
-            Down
+            ChangeDirection Down
 
         _ ->
-            NoOp
+            UnknownKeyPressed
 
 
 viewLayout : Model -> Html.Html Msg
@@ -447,7 +503,7 @@ board model =
             List.range model.size.min model.size.max
 
         spc =
-            spacing 10
+            spacing 7
 
         tileType x y =
             if List.member (Point x y) model.snake.body then
@@ -478,8 +534,11 @@ type TileType
 viewTile : TileType -> Element Msg
 viewTile tile =
     let
+        pixels =
+            px 30
+
         template str =
-            el [ Background.color (Hex.toColor str), width (px 50), height (px 50), Element.Border.rounded 5 ] none
+            el [ Background.color (Hex.toColor str), width pixels, height pixels, Element.Border.rounded 5 ] none
     in
     case tile of
         SnakePart ->
