@@ -1,4 +1,4 @@
-module Queue exposing (dequeue, empty, enqueue, peak)
+module Queue exposing (dequeue, empty, enqueue, peak, pop)
 
 
 type Queue a
@@ -16,12 +16,17 @@ enqueue item (Queue inQueue _) =
 
 
 peak : Queue a -> Maybe a
-peak (Queue _ outQueue) =
-    case outQueue of
-        [] ->
-            Nothing
+peak (Queue inQueue outQueue) =
+    case ( inQueue, outQueue ) of
+        ( inQ, [] ) ->
+            case List.reverse inQ of
+                [] ->
+                    Nothing
 
-        x :: _ ->
+                x :: _ ->
+                    Just x
+
+        ( _, x :: _ ) ->
             Just x
 
 
