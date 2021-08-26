@@ -1,4 +1,6 @@
-module Queue exposing (dequeue, empty, enqueue, peak, pop)
+module Queue exposing (dequeue, empty, enqueue, fold, peak, pop, toList)
+
+import Tuple exposing (second)
 
 
 type Queue a
@@ -39,7 +41,7 @@ pop (Queue inQueue outQueue) =
                     Nothing
 
                 _ :: xs ->
-                    Just (Queue inQ xs)
+                    Just (Queue [] xs)
 
         ( inQ, _ :: xs ) ->
             Just (Queue inQ xs)
@@ -54,7 +56,22 @@ dequeue (Queue inQueue outQueue) =
                     Nothing
 
                 x :: xs ->
-                    Just ( x, Queue inQ xs )
+                    Just ( x, Queue [] xs )
 
         ( inQ, x :: xs ) ->
             Just ( x, Queue inQ xs )
+
+
+fold : (a -> b -> b) -> b -> Queue a -> b
+fold folder accumulator queue =
+    case dequeue queue of
+        Nothing ->
+            accumulator
+
+        Just ( item, newQ ) ->
+            fold folder (folder item accumulator) newQ
+
+
+toList : Queue a -> List a
+toList =
+    fold (::) []
